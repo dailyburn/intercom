@@ -88,10 +88,7 @@ func (i *Intercom) buildUrl(path string, params map[string]string) string {
 
 // execRequest executes an arbitrary request for the given method and url returning the contents of the response in []byte or an error
 func (i *Intercom) execRequest(method, aUrl string, params map[string]interface{}) ([]byte, error) {
-
 	fmt.Println("EXEC REQUEST: ", aUrl, " method:", method, " params:", params)
-	return nil, nil
-	// ---
 
 	// json string encode the params for the POST body if there are any
 	var body io.Reader
