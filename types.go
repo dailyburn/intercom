@@ -1,6 +1,7 @@
 package intercom
 
 import "time"
+import "fmt"
 
 /*
 user_id	yes if no email	a unique string identifier for the user. It is required on creation if an email is not supplied.
@@ -29,4 +30,10 @@ type UserUpdate struct {
 	Unsubscribed        bool
 	UpdateLastRequestAt bool
 	NewSession          bool
+}
+
+type RateLimitError int64
+
+func (i RateLimitError) Error() string {
+	return fmt.Sprintf("Rate limit will reset at: '%d'", i)
 }
