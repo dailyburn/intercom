@@ -3,11 +3,13 @@ package intercom
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 )
 
 const cBaseUrl = "https://api.intercom.io/"
@@ -17,7 +19,7 @@ const DEFAULT_MAX_RESULTS = 200
 const MPOST = "POST"
 const MGET = "GET"
 
-// Jira is a client object with functions to make reuqests to the jira api
+// Intercom is a client object with functions to make reuqests to the Intercom api
 type Intercom struct {
 	client     *http.Client
 	baseurl    string
@@ -31,7 +33,7 @@ type Auth struct {
 	ApiKey string
 }
 
-// NewJiraClient returns an instance of the Jira api client
+// NewIntercomClient returns an instance of the Intercom api client
 func NewIntercomClient(appId, apiKey string, maxResults int) *Intercom {
 	if maxResults == -1 {
 		maxResults = DEFAULT_MAX_RESULTS
@@ -44,27 +46,25 @@ func NewIntercomClient(appId, apiKey string, maxResults int) *Intercom {
 // UpdateUser posts updated user data and returns an error if the POST fails
 func (i *Intercom) UpdateUser(params map[string]interface{}) error {
 	urlStr := i.buildUrl("users", nil)
-	data, err := i.execRequest(MPOST, urlStr, params)
+	_, err := i.execRequest(MPOST, urlStr, params)
 	if err != nil {
 		fmt.Println("Error: ", err)
 		return err
 	}
 
-	fmt.Println("DATA: ", string(data))
 	return nil
 }
 
 // CreateEvent posts event data and returns an error if the POST fails
 func (i *Intercom) CreateEvent(params map[string]interface{}) error {
 	urlStr := i.buildUrl("events", nil)
-	data, err := i.execRequest(MPOST, urlStr, params)
+	_, err := i.execRequest(MPOST, urlStr, params)
 
 	if err != nil {
 		fmt.Println("Error: ", err)
 		return err
 	}
 
-	fmt.Println("DATA: ", string(data))
 	return nil
 }
 
@@ -86,8 +86,8 @@ func (i *Intercom) buildUrl(path string, params map[string]string) string {
 	return aUrl.String()
 }
 
-// execRequest executes an arbitrary request for the given method and url returning the contents of the response in []byte or an error
-func (i *Intercom) execRequest(method, aUrl string, params map[string]interface{}) ([]byte, error) {
+// execRequest executes an arbitrary request for the given method and url returning the contents of the response in a map, or an error
+func (i *Intercom) execRequest(method, aUrl string, params map[string]interface{}) (map[string]interface{}, error) {
 	fmt.Println("EXEC REQUEST: ", aUrl, " method:", method, " params:", params)
 
 	// json string encode the params for the POST body if there are any
@@ -119,12 +119,31 @@ func (i *Intercom) execRequest(method, aUrl string, params map[string]interface{
 		return nil, rerr
 	}
 	defer resp.Body.Close()
-
-	data, derr := ioutil.ReadAll(resp.Body)
-	if derr != nil {
-		fmt.Println("Error reading response: ", derr)
-		return nil, derr
+	switch resp.StatusCode {
+	case 200:
+		data, derr := ioutil.ReadAll(resp.Body)
+		if derr != nil {
+			fmt.Println("Error reading response: ", derr)
+			return nil, derr
+		}
+		fmt.Println("DATA: ", string(data))
+		var parsed map[string]interface{}
+		err = json.Unmarshal(data, &parsed)
+		if err != nil {
+			return nil, err
+		}
+		return parsed, nil
+	case 202:
+		return nil, nil
+	case 404:
+		return nil, errors.New("not-found")
+	case 429:
+		resets_at, _ := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64)
+		return nil, RateLimitError(resets_at)
+	case 500, 502, 503, 504:
+		return nil, errors.New("server")
+	default:
+		return nil, errors.New("unknown, error code: " + fmt.Sprintf("%d", resp.StatusCode))
 	}
 
-	return data, nil
 }
